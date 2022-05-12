@@ -916,7 +916,6 @@ namespace Microsoft.Teams.Shifts.Integration.API.Common
            string teamId)
         {
             var startDateTime = DateTime.SpecifyKind(shift.SharedShift.StartDateTime, DateTimeKind.Utc);
-            var endDateTime = DateTime.SpecifyKind(shift.SharedShift.EndDateTime, DateTimeKind.Utc);
 
             return new TeamsShiftMappingEntity
             {
@@ -924,7 +923,6 @@ namespace Microsoft.Teams.Shifts.Integration.API.Common
                 KronosUniqueId = kronosUniqueId,
                 KronosPersonNumber = userMappingEntity?.RowKey,
                 ShiftStartDate = startDateTime,
-                ShiftEndDate = endDateTime,
                 ShiftsTeamId = teamId,
             };
         }

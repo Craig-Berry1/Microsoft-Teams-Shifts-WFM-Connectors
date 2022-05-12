@@ -455,16 +455,19 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
             this.telemetryClient.TrackTrace($"{Resource.ProcessOpenShiftRequestsAsync} end at: {DateTime.Now.ToString("O", CultureInfo.InvariantCulture)}");
         }
 
-        public async Task<ShiftsIntegResponse> RetractOfferedShiftAsync(AllOpenShiftRequestMappingEntity map)
+        /// <summary>
+        /// This method is to retract an open shift request made by the FLW.
+        /// </summary>
+        /// <param name="map">The open shift mapping entity.</param>
+        /// <returns>A unit of execution.</returns>
+        public async Task<ShiftsIntegResponse> RetractRequestedShiftAsync(AllOpenShiftRequestMappingEntity map)
         {
             var allRequiredConfigurations = await this.utility.GetAllConfigurationsAsync().ConfigureAwait(false);
             var swapShiftResponse = new ShiftsIntegResponse();
             var user = map.KronosPersonNumber;
 
             this.utility.SetQuerySpan(
-                Convert.ToBoolean(true, CultureInfo.InvariantCulture),
-                out var shiftStartDate,
-                out var shiftEndDate);
+                Convert.ToBoolean(true, CultureInfo.InvariantCulture), out var shiftStartDate, out var shiftEndDate);
 
             if (map.KronosStatus == ApiConstants.Submitted)
             {

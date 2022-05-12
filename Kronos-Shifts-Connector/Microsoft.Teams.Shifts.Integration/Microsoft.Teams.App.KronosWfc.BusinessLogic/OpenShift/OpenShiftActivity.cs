@@ -373,7 +373,7 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
         }
 
         /// <summary>
-        /// Method to create the DraftOpenShift.
+        /// Method to create the Retraction Requests.
         /// </summary>
         /// <param name="personNumber">FLW person number.</param>
         /// <param name="id">Id of shift.</param>
@@ -407,7 +407,15 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
             return rq.XmlSerialize();
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// The method to retract a given open shift request.
+        /// </summary>
+        /// <param name="jSession">The JSession (Kronos "token").</param>
+        /// <param name="reqId">The openShift Request ID.</param>
+        /// <param name="personNumber">The Kronos Person Number.</param>
+        /// <param name="querySpan">The query date span.</param>
+        /// <param name="endpointUrl">The Kronos WFC API Endpoint URL.</param>
+        /// <returns>A unit of execution that contains the response object.</returns>
         public async Task<CommonResponse> SubmitRetractionRequest(
             string jSession,
             string reqId,
