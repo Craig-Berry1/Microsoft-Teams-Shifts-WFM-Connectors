@@ -379,9 +379,9 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
         /// <param name="id">Id of shift.</param>
         /// <param name="queryDateSpan">Date span of shift.</param>
         /// <returns>The XML string.</returns>
-        public string CreateRetractionRequest(string personNumber, string id, string queryDateSpan)
+        private string CreateRetractionRequest(string personNumber, string id, string queryDateSpan)
         {
-            OpenShiftSubmitReq.Request rq = new OpenShiftSubmitReq.Request()
+            OpenShiftSubmitReq.Request request = new OpenShiftSubmitReq.Request()
             {
                 Action = ApiConstants.RetractRequests,
                 EmployeeRequestMgmt = new EmployeeRequestMgmt
@@ -404,7 +404,7 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
                 },
             };
 
-            return rq.XmlSerialize();
+            return request.XmlSerialize();
         }
 
         /// <summary>
@@ -442,10 +442,10 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
             string querySpan,
             string comment)
         {
-            Request rq = new Request()
+            Request request = new Request()
             {
                 Action = ApiConstants.UpdateStatus,
-                RequestMgmt = new OpenShiftSubmitReq.RequestManagement.RequestMgmt()
+                RequestMgmt = new RequestMgmt()
                 {
                     Employees = new Employee()
                     {
@@ -459,7 +459,7 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
                 },
             };
 
-            rq.RequestMgmt.RequestStatusChanges.RequestStatusChange = new RequestStatusChange[]
+            request.RequestMgmt.RequestStatusChanges.RequestStatusChange = new RequestStatusChange[]
             {
                 new RequestStatusChange
                 {
@@ -472,7 +472,7 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
                 },
             };
 
-            return rq.XmlSerialize();
+            return request.XmlSerialize();
         }
 
         /// <summary>
