@@ -8,6 +8,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
     using System.Collections.Generic;
     using System.Globalization;
     using System.Linq;
+    using System.Net;
     using System.Net.Http;
     using System.Net.Http.Headers;
     using System.Reflection;
@@ -452,6 +453,67 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
             }
 
             this.telemetryClient.TrackTrace($"{Resource.ProcessOpenShiftRequestsAsync} end at: {DateTime.Now.ToString("O", CultureInfo.InvariantCulture)}");
+        }
+
+        public async Task<ShiftsIntegResponse> RetractOfferedShiftAsync(AllOpenShiftRequestMappingEntity map)
+        {
+            var allRequiredConfigurations = await this.utility.GetAllConfigurationsAsync().ConfigureAwait(false);
+            var swapShiftResponse = new ShiftsIntegResponse();
+            var user = map.KronosPersonNumber;
+
+            this.utility.SetQuerySpan(
+                Convert.ToBoolean(true, CultureInfo.InvariantCulture),
+                out var shiftStartDate,
+                out var shiftEndDate);
+
+            if (map.KronosStatus == ApiConstants.Submitted)
+            {
+                user = map.KronosPersonNumber;
+            }
+
+            if ((bool)allRequiredConfigurations?.IsAllSetUpExists)
+            {
+                var response = await this.openShiftActivity.SubmitRetractionRequest(
+                    allRequiredConfigurations.KronosSession,
+                    map.KronosOpenShiftRequestId,
+                    user,
+                    $"{shiftStartDate} - {shiftEndDate}",
+                    new Uri(allRequiredConfigurations.WfmEndPoint)).ConfigureAwait(false);
+
+                if (response?.Status == ApiConstants.Success)
+                {
+                    map.KronosStatus = ApiConstants.Retract;
+                    await this.openShiftRequestMappingEntityProvider.SaveOrUpdateOpenShiftRequestMappingEntityAsync(map).ConfigureAwait(false);
+
+                    swapShiftResponse = new ShiftsIntegResponse()
+                    {
+                        Id = map.KronosOpenShiftRequestId,
+                        Status = (int)HttpStatusCode.OK,
+                        Body = new Body()
+                        {
+                            Error = null,
+                            ETag = null,
+                        },
+                    };
+                }
+                else
+                {
+                    swapShiftResponse.Status = (int)HttpStatusCode.InternalServerError;
+                    swapShiftResponse.Body = new Body()
+                    {
+                        Error = new ResponseError
+                        {
+                            Code = Resource.KronosErrorStatus,
+                            Message = response.Error.Message,
+                        },
+
+                        ETag = null,
+                    };
+                    swapShiftResponse.Id = map.KronosOpenShiftRequestId;
+                }
+            }
+
+            return swapShiftResponse;
         }
 
         /// <summary>

@@ -494,6 +494,30 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
                         break;
                 }
             }
+            else if (jsonModel.Requests.Any(c => c.Method == "DELETE"))
+            {
+                // Code below handles the delete open shift request.
+                var deleteOpenShiftRequestId = jsonModel.Requests.First(x => x.Url.Contains("/openshiftrequests/", StringComparison.InvariantCulture)).Id;
+
+                // Logging to telemetry the incoming cancelled request by FLW.
+                this.telemetryClient.TrackTrace($"The Open Shift Request: {deleteOpenShiftRequestId} has been declined by FLW.");
+
+                var entityToCancel = await this.openShiftRequestMappingEntityProvider.GetOpenShiftRequestMappingEntityByRowKeyAsync(deleteOpenShiftRequestId).ConfigureAwait(false);
+
+                if (entityToCancel != null)
+                {
+                    if (entityToCancel.KronosStatus != ApiConstants.Retract)
+                    {
+                        responseModelList.Add(await this.openShiftRequestController.RetractOfferedShiftAsync(entityToCancel).ConfigureAwait(false));
+                        entityToCancel.ShiftsStatus = ApiConstants.SwapShiftCancelled;
+                        await this.openShiftRequestMappingEntityProvider.SaveOrUpdateOpenShiftRequestMappingEntityAsync(entityToCancel).ConfigureAwait(false);
+                    }
+                }
+
+                var integrationResponse = new ShiftsIntegResponse();
+                integrationResponse = CreateSuccessfulResponse(deleteOpenShiftRequestId);
+                responseModelList.Add(integrationResponse);
+            }
 
             return responseModelList;
         }

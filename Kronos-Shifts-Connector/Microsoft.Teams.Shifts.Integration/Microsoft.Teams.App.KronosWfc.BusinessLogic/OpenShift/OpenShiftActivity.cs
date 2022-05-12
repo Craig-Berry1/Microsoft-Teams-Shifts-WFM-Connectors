@@ -19,11 +19,13 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
     using Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.OpenShiftRequest.RequestManagement;
     using Microsoft.Teams.App.KronosWfc.Models.RequestEntities.Schedule;
     using Microsoft.Teams.App.KronosWfc.Service;
-    using CommonSegments = Microsoft.Teams.App.KronosWfc.Models.RequestEntities.Common.ShiftSegments;
-    using CreateOpenShiftRequest = Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.CreateOpenShift;
-    using OpenShiftApproveDecline = Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.ApproveDecline;
-    using OpenShiftSubmitReq = Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.OpenShiftRequest;
-    using Request = Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.OpenShiftRequest.RequestManagement.Request;
+    using CommonResponse = Models.ResponseEntities.Common.Response;
+    using CommonSegments = Models.RequestEntities.Common.ShiftSegments;
+    using CreateOpenShiftRequest = Models.RequestEntities.OpenShift.CreateOpenShift;
+    using OpenShiftApproveDecline = Models.RequestEntities.OpenShift.ApproveDecline;
+    using OpenShiftSubmitReq = Models.RequestEntities.OpenShift.OpenShiftRequest;
+    using OpenShiftRequests = Models.RequestEntities.OpenShift.OpenShiftRequest;
+    using Request = Models.RequestEntities.OpenShift.OpenShiftRequest.RequestManagement.Request;
 
     /// <summary>
     /// This class implements methods that are defined in <see cref="IOpenShiftActivity"/>.
@@ -371,6 +373,54 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
         }
 
         /// <summary>
+        /// Method to create the DraftOpenShift.
+        /// </summary>
+        /// <param name="personNumber">FLW person number.</param>
+        /// <param name="id">Id of shift.</param>
+        /// <param name="queryDateSpan">Date span of shift.</param>
+        /// <returns>The XML string.</returns>
+        public string CreateRetractionRequest(string personNumber, string id, string queryDateSpan)
+        {
+            OpenShiftSubmitReq.Request rq = new OpenShiftSubmitReq.Request()
+            {
+                Action = ApiConstants.RetractRequests,
+                EmployeeRequestMgmt = new EmployeeRequestMgmt
+                {
+                    Employee = new Models.RequestEntities.ShiftsToKronos.AddRequest.Employee
+                    {
+                        PersonIdentity = new Models.RequestEntities.ShiftsToKronos.AddRequest.PersonIdentity
+                        {
+                            PersonNumber = personNumber,
+                        },
+                    },
+                    RequestIds = new Models.RequestEntities.Common.RequestIds()
+                    {
+                        RequestId = new List<Models.RequestEntities.Common.RequestId>()
+                        {
+                            new Models.RequestEntities.Common.RequestId { Id = id },
+                        },
+                    },
+                    QueryDateSpan = queryDateSpan,
+                },
+            };
+
+            return rq.XmlSerialize();
+        }
+
+        /// <inheritdoc/>
+        public async Task<CommonResponse> SubmitRetractionRequest(
+            string jSession,
+            string reqId,
+            string personNumber,
+            string querySpan,
+            Uri endpointUrl)
+        {
+            string xmlRequest = this.CreateRetractionRequest(personNumber, reqId, querySpan);
+            var response = await this.apiHelper.SendSoapPostRequestAsync(endpointUrl, ApiConstants.SoapEnvOpen, xmlRequest, ApiConstants.SoapEnvClose, jSession).ConfigureAwait(false);
+            return response.ProcessResponse<CommonResponse>(this.telemetryClient);
+        }
+
+        /// <summary>
         /// Method to create the XML string for updating the OpenShift Request in Kronos from DRAFT to SUBMITTED.
         /// </summary>
         /// <param name="personNumber">The Kronos Person Number.</param>
@@ -387,11 +437,11 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
             Request rq = new Request()
             {
                 Action = ApiConstants.UpdateStatus,
-                RequestMgmt = new RequestMgmt()
+                RequestMgmt = new OpenShiftSubmitReq.RequestManagement.RequestMgmt()
                 {
-                    Employees = new OpenShiftSubmitReq.RequestManagement.Employee()
+                    Employees = new Employee()
                     {
-                        PersonIdentity = new OpenShiftSubmitReq.RequestManagement.PersonIdentity()
+                        PersonIdentity = new OpenShiftRequests.RequestManagement.PersonIdentity()
                         {
                             PersonNumber = personNumber,
                         },

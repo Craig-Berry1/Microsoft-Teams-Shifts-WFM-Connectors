@@ -5,7 +5,7 @@
 namespace Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.OpenShiftRequest
 {
     using System.Xml.Serialization;
-    using Microsoft.Teams.App.KronosWfc.Models.RequestEntities.ShiftsToKronos.AddRequest;
+    using Microsoft.Teams.App.KronosWfc.Models.RequestEntities.Common;
 
     /// <summary>
     /// This class models the EmployeeRequestMgmt.
@@ -22,12 +22,18 @@ namespace Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.OpenShi
         /// Gets or sets the Employee.
         /// </summary>
         [XmlElement]
-        public Employee Employee { get; set; }
+        public ShiftsToKronos.AddRequest.Employee Employee { get; set; }
 
         /// <summary>
         /// Gets or sets the RequestItems.
         /// </summary>
         [XmlElement]
         public RequestItems RequestItems { get; set; }
+
+        /// <summary>
+        /// Gets or sets the RequestIds.
+        /// </summary>
+        [XmlElement("RequestIds")]
+        public RequestIds RequestIds { get; set; }
     }
 }
