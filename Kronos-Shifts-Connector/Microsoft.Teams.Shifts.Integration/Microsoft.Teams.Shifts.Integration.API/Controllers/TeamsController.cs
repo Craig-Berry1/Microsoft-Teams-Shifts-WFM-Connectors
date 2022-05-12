@@ -508,7 +508,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
                 {
                     if (entityToCancel.KronosStatus != ApiConstants.Retract)
                     {
-                        responseModelList.Add(await this.openShiftRequestController.RetractOfferedShiftAsync(entityToCancel).ConfigureAwait(false));
+                        responseModelList.Add(await this.openShiftRequestController.RetractRequestedShiftAsync(entityToCancel).ConfigureAwait(false));
                         entityToCancel.ShiftsStatus = ApiConstants.SwapShiftCancelled;
                         await this.openShiftRequestMappingEntityProvider.SaveOrUpdateOpenShiftRequestMappingEntityAsync(entityToCancel).ConfigureAwait(false);
                     }
