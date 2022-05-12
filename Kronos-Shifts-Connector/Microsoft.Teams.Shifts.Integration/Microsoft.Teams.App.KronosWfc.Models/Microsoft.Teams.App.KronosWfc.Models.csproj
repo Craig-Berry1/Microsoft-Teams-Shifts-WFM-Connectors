@@ -233,7 +233,6 @@
     <Compile Include="RequestEntities\OpenShift\OpenShiftRequest\RequestManagement\RequestMgmt.cs" />
     <Compile Include="RequestEntities\OpenShift\OpenShiftRequest\RequestManagement\RequestStatusChange.cs" />
     <Compile Include="RequestEntities\OpenShift\OpenShiftRequest\RequestManagement\RequestStatusChanges.cs" />
-    <Compile Include="RequestEntities\OpenShift\OpenShiftRequest\RequestMgmt.cs" />
     <Compile Include="RequestEntities\OpenShift\OpenShiftRequest\RetractRequest.cs" />
     <Compile Include="RequestEntities\OpenShift\OpenShiftSchedule.cs" />
     <Compile Include="RequestEntities\OpenShift\Request.cs" />
