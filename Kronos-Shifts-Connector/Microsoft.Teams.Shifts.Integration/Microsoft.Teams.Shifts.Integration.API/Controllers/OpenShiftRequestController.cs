@@ -41,7 +41,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
     /// </summary>
     [Route("api/OpenShiftRequests")]
     [Authorize(Policy = "AppID")]
-    public class OpenShiftRequestController : Controller
+    public class OpenShiftRequestController : Controller, IOpenShiftRequestController
     {
         private readonly AppSettings appSettings;
         private readonly TelemetryClient telemetryClient;
