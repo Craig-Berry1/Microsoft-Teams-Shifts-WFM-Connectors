@@ -542,7 +542,7 @@
             },
             {
               "name": "GraphApiUrl",
-              "value": "https://graph.microsoft.com"
+              "value": "https://graph.microsoft.com/v1.0/"
             },
             {
               "name": "GraphBetaApiUrl",
