@@ -305,7 +305,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
                         if (shift.DraftShift?.IsActive == false || shift.SharedShift?.IsActive == false)
                         {
                             // Manager deleted a shift.
-                            response = await this.shiftController.DeleteShiftInKronosAsync(shift, user, mappedTeam).ConfigureAwait(false);
+                            return CreateBadResponse(shift.Id, error: "Deleting a shift from within Teams is not allowed.");
                         }
                         else
                         {
