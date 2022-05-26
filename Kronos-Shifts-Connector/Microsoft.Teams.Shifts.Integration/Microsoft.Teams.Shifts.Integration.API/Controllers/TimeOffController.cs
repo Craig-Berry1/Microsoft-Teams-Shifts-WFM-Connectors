@@ -29,6 +29,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
     using Microsoft.Teams.Shifts.Integration.BusinessLogic.Providers;
     using Newtonsoft.Json;
     using TimeOffReq = Microsoft.Teams.App.KronosWfc.Models.ResponseEntities.TimeOffRequests;
+  
 
     /// <summary>
     /// Time off controller.
@@ -44,7 +45,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
         private readonly ITimeOffReasonProvider timeOffReasonProvider;
         private readonly IAzureTableStorageHelper azureTableStorageHelper;
         private readonly ITimeOffMappingEntityProvider timeOffMappingEntityProvider;
-        private readonly Utility utility;
+        private readonly IUtility utility;
         private readonly IGraphUtility graphUtility;
         private readonly ITeamDepartmentMappingProvider teamDepartmentMappingProvider;
         private readonly IHttpClientFactory httpClientFactory;
@@ -73,7 +74,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
             ITimeOffReasonProvider timeOffReasonProvider,
             IAzureTableStorageHelper azureTableStorageHelper,
             ITimeOffMappingEntityProvider timeOffMappingEntityProvider,
-            Utility utility,
+            IUtility utility,
             IGraphUtility graphUtility,
             ITeamDepartmentMappingProvider teamDepartmentMappingProvider,
             IHttpClientFactory httpClientFactory,
@@ -391,7 +392,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
 
                 data.Add("ResponseStatus", $"{response.Status}");
 
-                if (response.Status == "Success" && approved)
+                if (response.Status == ApiConstants.Success && approved)
                 {
                     this.telemetryClient.TrackTrace($"Update table for approval of time off request: {kronosReqId}", data);
                     timeOffRequestMapping.KronosStatus = ApiConstants.ApprovedStatus;
@@ -399,12 +400,24 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
                     return true;
                 }
 
-                if (response.Status == "Success" && !approved)
+                if (response.Status == ApiConstants.Success && !approved)
                 {
                     this.telemetryClient.TrackTrace($"Update table for refusal of time off request: {kronosReqId}", data);
                     timeOffRequestMapping.KronosStatus = ApiConstants.Refused;
                     await this.timeOffMappingEntityProvider.SaveOrUpdateTimeOffMappingEntityAsync(timeOffRequestMapping).ConfigureAwait(false);
                     return true;
+                }
+
+                var kronosTORSubmissionError = response.Error?.DetailErrors?.Error
+                        .FirstOrDefault(err => err.ErrorCode == ApiConstants.InsufficientAccrualBalanceErrorCode
+                            && err.Message
+                                .Contains(timeOffRequestMapping.PayCodeName, StringComparison.OrdinalIgnoreCase));
+
+                if (response.Status == ApiConstants.Failure
+                    && approved
+                    && kronosTORSubmissionError != null)
+                {
+                    throw new Exception($"{kronosTORSubmissionError.ErrorCode}:  {kronosTORSubmissionError.Message}");
                 }
             }
 
