@@ -23,8 +23,7 @@ namespace Microsoft.Teams.Shifts.Integration.Core.UnitTests.API.Tests
         /// <param name="allOpenShiftRequestMappingEntity">The open shift request.</param>
         /// <param name="openShiftRequestMappingEntityProvider">The provider with logic for open shift requests.</param>
         /// <param name="openShiftController">Open shift controller business logic.</param>
-        [Theory]
-        [InlineAutoNSubstituteData()]
+        [AutoNSubstituteData]
         public void ProcessOpenShiftRequest_ValidInput_Returns200(
             string id,
             AllOpenShiftRequestMappingEntity allOpenShiftRequestMappingEntity,
