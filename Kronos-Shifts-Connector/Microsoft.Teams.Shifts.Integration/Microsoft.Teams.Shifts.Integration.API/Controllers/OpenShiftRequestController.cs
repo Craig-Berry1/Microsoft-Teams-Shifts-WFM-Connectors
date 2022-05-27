@@ -8,6 +8,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
     using System.Collections.Generic;
     using System.Globalization;
     using System.Linq;
+    using System.Net;
     using System.Net.Http;
     using System.Net.Http.Headers;
     using System.Reflection;
@@ -40,7 +41,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
     /// </summary>
     [Route("api/OpenShiftRequests")]
     [Authorize(Policy = "AppID")]
-    public class OpenShiftRequestController : Controller
+    public class OpenShiftRequestController : Controller, IOpenShiftRequestController
     {
         private readonly AppSettings appSettings;
         private readonly TelemetryClient telemetryClient;
@@ -452,6 +453,70 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
             }
 
             this.telemetryClient.TrackTrace($"{Resource.ProcessOpenShiftRequestsAsync} end at: {DateTime.Now.ToString("O", CultureInfo.InvariantCulture)}");
+        }
+
+        /// <summary>
+        /// This method is to retract an open shift request made by the FLW.
+        /// </summary>
+        /// <param name="map">The open shift mapping entity.</param>
+        /// <returns>A unit of execution.</returns>
+        public async Task<ShiftsIntegResponse> RetractRequestedShiftAsync(AllOpenShiftRequestMappingEntity map)
+        {
+            var allRequiredConfigurations = await this.utility.GetAllConfigurationsAsync().ConfigureAwait(false);
+            var swapShiftResponse = new ShiftsIntegResponse();
+            var user = map.KronosPersonNumber;
+
+            this.utility.SetQuerySpan(
+                Convert.ToBoolean(true, CultureInfo.InvariantCulture), out var shiftStartDate, out var shiftEndDate);
+
+            if (map.KronosStatus == ApiConstants.Submitted)
+            {
+                user = map.KronosPersonNumber;
+            }
+
+            if ((bool)allRequiredConfigurations?.IsAllSetUpExists)
+            {
+                var response = await this.openShiftActivity.SubmitRetractionRequest(
+                    allRequiredConfigurations.KronosSession,
+                    map.KronosOpenShiftRequestId,
+                    user,
+                    $"{shiftStartDate} - {shiftEndDate}",
+                    new Uri(allRequiredConfigurations.WfmEndPoint)).ConfigureAwait(false);
+
+                if (response?.Status == ApiConstants.Success)
+                {
+                    map.KronosStatus = ApiConstants.Retract;
+                    await this.openShiftRequestMappingEntityProvider.SaveOrUpdateOpenShiftRequestMappingEntityAsync(map).ConfigureAwait(false);
+
+                    swapShiftResponse = new ShiftsIntegResponse()
+                    {
+                        Id = map.KronosOpenShiftRequestId,
+                        Status = (int)HttpStatusCode.OK,
+                        Body = new Body()
+                        {
+                            Error = null,
+                            ETag = null,
+                        },
+                    };
+                }
+                else
+                {
+                    swapShiftResponse.Status = (int)HttpStatusCode.InternalServerError;
+                    swapShiftResponse.Body = new Body()
+                    {
+                        Error = new ResponseError
+                        {
+                            Code = Resource.KronosErrorStatus,
+                            Message = response.Error.Message,
+                        },
+
+                        ETag = null,
+                    };
+                    swapShiftResponse.Id = map.KronosOpenShiftRequestId;
+                }
+            }
+
+            return swapShiftResponse;
         }
 
         /// <summary>

@@ -10,6 +10,7 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
     using Microsoft.Teams.App.KronosWfc.Models.CommonEntities;
     using Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.OpenShiftRequest;
     using OpenShiftResponse = Microsoft.Teams.App.KronosWfc.Models.ResponseEntities.OpenShift.Batch.Response;
+    using CommonResponse = Models.ResponseEntities.Common.Response;
 
     /// <summary>
     /// OpenShift Activity interface.
@@ -123,5 +124,21 @@ namespace Microsoft.Teams.App.KronosWfc.BusinessLogic.OpenShift
             bool approved,
             string kronosId,
             Comments comments);
+
+        /// <summary>
+        /// The method to retract a given open shift request.
+        /// </summary>
+        /// <param name="jSession">The JSession (Kronos "token").</param>
+        /// <param name="reqId">The openShift Request ID.</param>
+        /// <param name="personNumber">The Kronos Person Number.</param>
+        /// <param name="querySpan">The query date span.</param>
+        /// <param name="endpointUrl">The Kronos WFC API Endpoint URL.</param>
+        /// <returns>A unit of execution that contains the response object.</returns>
+        Task<CommonResponse> SubmitRetractionRequest(
+            string jSession,
+            string reqId,
+            string personNumber,
+            string querySpan,
+            Uri endpointUrl);
     }
 }

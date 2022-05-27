@@ -29,5 +29,11 @@ namespace Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.OpenShi
         /// </summary>
         [XmlElement]
         public RequestItems RequestItems { get; set; }
+
+        /// <summary>
+        /// Gets or sets the RequestIds.
+        /// </summary>
+        [XmlElement("RequestIds")]
+        public Common.RequestIds RequestIds { get; set; }
     }
 }

@@ -55,6 +55,11 @@ namespace Microsoft.Teams.App.KronosWfc.Models.RequestEntities.OpenShift.OpenShi
         public string ShiftDate { get; set; }
 
         /// <summary>
+        /// Gets or sets the Id.
+        /// </summary>
+        public string Id { get; set; }
+
+        /// <summary>
         /// Gets or sets the open shift segments from the activities.
         /// </summary>
         public Common.ShiftSegments OpenShiftSegments { get; set; }
