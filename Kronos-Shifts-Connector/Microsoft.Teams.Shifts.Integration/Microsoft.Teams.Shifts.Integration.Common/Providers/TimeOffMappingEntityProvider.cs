@@ -130,6 +130,21 @@ namespace Microsoft.Teams.Shifts.Integration.BusinessLogic.Providers
         }
 
         /// <summary>
+        /// Method to delete the orphan data from time off mapping entity.
+        /// </summary>
+        /// <param name="entity">The mapping entity to be deleted.</param>
+        /// <returns>A unit of execution to say whether or not the delete happened successfully.</returns>
+        public Task DeleteOrphanDataFromShiftMappingAsync(TimeOffMappingEntity entity)
+        {
+            if (entity is null)
+            {
+                throw new ArgumentNullException(nameof(entity));
+            }
+
+            return this.DeleteEntityAsync(entity);
+        }
+
+        /// <summary>
         /// Get all the time off mapping entities.
         /// </summary>
         /// <param name="userModel">User in batch.</param>
@@ -211,6 +226,30 @@ namespace Microsoft.Teams.Shifts.Integration.BusinessLogic.Providers
 
             TableOperation addOrUpdateOperation = TableOperation.InsertOrReplace(entity);
             return await this.timeoffEntityMappingTable.ExecuteAsync(addOrUpdateOperation).ConfigureAwait(false);
+        }
+
+        private async Task<TableResult> DeleteEntityAsync(TimeOffMappingEntity entity)
+        {
+            if (entity is null)
+            {
+                throw new ArgumentNullException(nameof(entity));
+            }
+
+            await this.EnsureInitializedAsync().ConfigureAwait(false);
+
+            var deleteEntityProps = new Dictionary<string, string>()
+            {
+                { "CallingAssembly", Assembly.GetCallingAssembly().GetName().Name },
+                { "RecordToDelete", entity.ToString() },
+            };
+
+            this.telemetryClient.TrackTrace(MethodBase.GetCurrentMethod().Name, deleteEntityProps);
+
+            TableOperation deleteOperation = TableOperation.Delete(entity);
+
+            return await this.timeoffEntityMappingTable
+                .ExecuteAsync(deleteOperation)
+                .ConfigureAwait(false);
         }
     }
 }

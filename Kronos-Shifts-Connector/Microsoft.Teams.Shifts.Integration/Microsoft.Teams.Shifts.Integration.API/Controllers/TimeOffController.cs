@@ -25,11 +25,10 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
     using Microsoft.Teams.Shifts.Integration.API.Common;
     using Microsoft.Teams.Shifts.Integration.API.Models.IntegrationAPI;
     using Microsoft.Teams.Shifts.Integration.API.Models.Response.TimeOffRequest;
+    using Microsoft.Teams.Shifts.Integration.API.Models.Response.TimeOffSchedule;
     using Microsoft.Teams.Shifts.Integration.BusinessLogic.Models;
     using Microsoft.Teams.Shifts.Integration.BusinessLogic.Providers;
     using Newtonsoft.Json;
-    using TimeOffReq = Microsoft.Teams.App.KronosWfc.Models.ResponseEntities.TimeOffRequests;
-  
 
     /// <summary>
     /// Time off controller.
@@ -560,6 +559,16 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
                 }
             }
 
+            // Clean up any orphaned TORs not found in Kronos.
+            if (lookUpData.Except(timeOffLookUpEntriesFoundList).Any())
+            {
+                await this.DeleteOrphanDataTimeOffEntityMappingsAsync(
+                    configurationDetails,
+                    timeOffLookUpEntriesFoundList,
+                    userModelList,
+                    lookUpData).ConfigureAwait(false);
+            }
+
             await this.ApproveTimeOffRequestAsync(
                  timeOffLookUpEntriesFoundList,
                  userModelList,
@@ -587,7 +596,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
         /// <param name="queryStartDate">The query start date.</param>
         /// <param name="queryEndDate">The query end date.</param>
         /// <returns>Returns a unit of execution that contains the type of timeOff.Response.</returns>
-        private async Task<TimeOffReq.Response> GetTimeOffResultsByBatchAsync(
+        private async Task<Microsoft.Teams.App.KronosWfc.Models.ResponseEntities.TimeOffRequests.Response> GetTimeOffResultsByBatchAsync(
             List<ResponseHyperFindResult> employees,
             string kronosEndpoint,
             string workforceIntegrationId,
@@ -868,6 +877,191 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
         private async void AddorUpdateTimeOffMappingAsync(TimeOffMappingEntity timeOffMappingEntity)
         {
             await this.azureTableStorageHelper.InsertOrMergeTableEntityAsync(timeOffMappingEntity, "TimeOffMapping").ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Method to delete an orphan Time Off Reqests - happens when a TOR is deleted from Kronos.
+        /// </summary>
+        /// <param name="configurationDetails">The configuration details.</param>
+        /// <param name="lookUpDataFoundList">The list of data that has been found.</param>
+        /// <param name="userModelList">The list of users.</param>
+        /// <param name="lookUpData">The Shifts look up data.</param>
+        /// <returns>A unit of execution.</returns>
+        private async Task DeleteOrphanDataTimeOffEntityMappingsAsync
+        (
+            SetupDetails configurationDetails,
+            List<TimeOffMappingEntity> lookUpDataFoundList,
+            List<UserDetailsModel> userModelList,
+            List<TimeOffMappingEntity> lookUpData)
+        {
+            // Identify the orphan TORs
+            var orphanList = lookUpData.Except(lookUpDataFoundList);
+
+            // Get list of TORs for each Team based on User's in the Orphan list.  Required
+            // to link the TimeOffMapping Entity to the Shifts TimeOffRequest object.
+            // EXAMPLE:  SREQ Id to TOR Id
+            var shiftTORs = await this.GetShitsTimeOffRequestsByTeams(
+                configurationDetails,
+                userModelList,
+                lookUpData).ConfigureAwait(false);
+
+            // Get list of TOSs for each Team based on User's in the Orphan list.  Required 
+            // to map the Shifts TimeOffRequest object to the Shifts TimeOff (Schedule) object.
+            // EXAMPLE:  TOR Id to TOR Id
+            var shiftTOSs = await this.GetShitsTimeOffSchedulesByTeams(
+                configurationDetails,
+                userModelList,
+                lookUpData).ConfigureAwait(false);
+
+            // Iterate through the orphan list.
+            foreach (var orphan in orphanList)
+            {
+                var user = userModelList.FirstOrDefault(u => u.KronosPersonNumber == orphan.KronosPersonNumber);
+                var tor = shiftTORs.FirstOrDefault(sTOR => sTOR?.Id == orphan.ShiftsRequestId);
+                var tos = shiftTOSs.FirstOrDefault(sTOS => sTOS?.SharedTimeOff?.TimeOffReasonId == tor?.TimeOffReasonId);
+
+                // Skip if unable to find the User and/or corresponding TOR.
+                if (user != null && tor != null && tos != null)
+                {
+                    var httpClient = this.httpClientFactory.CreateClient("ShiftsAPI");
+                    httpClient.DefaultRequestHeaders.Add("X-MS-WFMPassthrough", configurationDetails.WFIId);
+
+                    var requestUrl = $"teams/{user.ShiftTeamId}/schedule/timesOff/{tos.Id}";
+
+                    var response = await this.graphUtility
+                        .SendHttpRequest(
+                            configurationDetails.GraphConfigurationDetails,
+                            httpClient,
+                            HttpMethod.Delete,
+                            requestUrl).ConfigureAwait(false);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var successfulDeleteProps = new Dictionary<string, string>()
+                            {
+                                { "ResponseCode", response.StatusCode.ToString() },
+                                { "ResponseHeader", response.Headers.ToString() },
+                            };
+
+                        this.telemetryClient.TrackTrace(MethodBase.GetCurrentMethod().Name, successfulDeleteProps);
+
+                        await this.timeOffMappingEntityProvider
+                            .DeleteOrphanDataFromShiftMappingAsync(orphan)
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        var errorDeleteProps = new Dictionary<string, string>()
+                            {
+                                { "ResponseCode", response.StatusCode.ToString() },
+                                { "ResponseHeader", response.Headers.ToString() },
+                            };
+
+                        this.telemetryClient.TrackTrace(MethodBase.GetCurrentMethod().Name, errorDeleteProps);
+                    }
+
+                    httpClient.Dispose();
+                }
+            }
+        }
+
+        private async Task<List<TimeOffRequestItem>> GetShitsTimeOffRequestsByTeams
+        (
+            SetupDetails configurationDetails,
+            List<UserDetailsModel> userModelList,
+            List<TimeOffMappingEntity> orphanList
+        )
+        {
+            List<TimeOffRequestItem> TORs = new List<TimeOffRequestItem>();
+
+            var teamIds = (
+                from users in userModelList
+                join orphans in orphanList
+                    on users.KronosPersonNumber equals orphans.KronosPersonNumber
+                select new { users.ShiftTeamId })
+                    .Distinct();
+
+            foreach (var teamId in teamIds)
+            {
+                var httpClient = this.httpClientFactory.CreateClient("ShiftsAPI");
+
+                // Send Passthrough header to indicate the sender of request in outbound call.
+                httpClient.DefaultRequestHeaders.Add("X-MS-WFMPassthrough", configurationDetails.WFIId);
+
+                var requestUrl = $"teams/{teamId.ShiftTeamId}/schedule/timeOffRequests/";
+
+                var response = await this.graphUtility
+                    .SendHttpRequest(
+                        configurationDetails.GraphConfigurationDetails,
+                        httpClient,
+                        HttpMethod.Get,
+                        requestUrl).ConfigureAwait(false);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    var timeOffResponse = JsonConvert.DeserializeObject<TimeOffRequestRes>(responseContent);
+
+                    TORs.AddRange(timeOffResponse.TORItem);
+                }
+
+                httpClient.Dispose();
+            }
+
+            return TORs;
+        }
+
+        private async Task<List<TimeOffScheduleItem>> GetShitsTimeOffSchedulesByTeams
+        (
+            SetupDetails configurationDetails,
+            List<UserDetailsModel> userModelList,
+            List<TimeOffMappingEntity> orphanList
+        )
+        {
+            List<TimeOffScheduleItem> TOSs = new List<TimeOffScheduleItem>();
+
+            var teamIds = (
+                from users in userModelList
+                join orphans in orphanList
+                    on users.KronosPersonNumber equals orphans.KronosPersonNumber
+                select new { users.ShiftTeamId })
+                    .Distinct();
+
+            foreach (var teamId in teamIds)
+            {
+                var httpClient = this.httpClientFactory.CreateClient("ShiftsAPI");
+
+                // Send Passthrough header to indicate the sender of request in outbound call.
+                httpClient.DefaultRequestHeaders.Add("X-MS-WFMPassthrough", configurationDetails.WFIId);
+
+                var requestUrl = $"teams/{teamId.ShiftTeamId}/schedule/timesOff/";
+
+                var response = await this.graphUtility
+                    .SendHttpRequest(
+                        configurationDetails.GraphConfigurationDetails,
+                        httpClient,
+                        HttpMethod.Get,
+                        requestUrl).ConfigureAwait(false);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+                    var settings = new JsonSerializerSettings
+                    {
+                        NullValueHandling = NullValueHandling.Ignore,
+                        MissingMemberHandling = MissingMemberHandling.Ignore,
+                    };
+
+                    var timeOffResponse = JsonConvert.DeserializeObject<TimeOffScheduleRes>(responseContent, settings);
+
+                    TOSs.AddRange(timeOffResponse.TOSItem);
+                }
+
+                httpClient.Dispose();
+            }
+
+            return TOSs;
         }
     }
 }

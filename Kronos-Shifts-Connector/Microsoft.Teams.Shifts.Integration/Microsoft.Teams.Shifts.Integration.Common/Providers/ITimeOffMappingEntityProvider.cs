@@ -36,5 +36,12 @@ namespace Microsoft.Teams.Shifts.Integration.BusinessLogic.Providers
         /// <param name="entity">An object of type <see cref="TimeOffMappingEntity"/> which is to be saved or updated.</param>
         /// <returns>A unit of execution.</returns>
         Task SaveOrUpdateTimeOffMappingEntityAsync(TimeOffMappingEntity entity);
+
+        /// <summary>
+        /// Method to delete the orphan data from time off mapping entity.
+        /// </summary>
+        /// <param name="entity">The mapping entity to be deleted.</param>
+        /// <returns>A unit of execution to say whether or not the delete happened successfully.</returns>
+        Task DeleteOrphanDataFromShiftMappingAsync(TimeOffMappingEntity entity);
     }
 }
