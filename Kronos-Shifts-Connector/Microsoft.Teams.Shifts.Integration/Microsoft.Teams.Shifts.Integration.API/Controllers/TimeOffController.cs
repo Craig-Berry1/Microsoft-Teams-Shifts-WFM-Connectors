@@ -18,6 +18,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Graph;
     using Microsoft.Teams.App.KronosWfc.BusinessLogic.Common;
+    using Microsoft.Teams.App.KronosWfc.BusinessLogic.Shifts;
     using Microsoft.Teams.App.KronosWfc.BusinessLogic.TimeOff;
     using Microsoft.Teams.App.KronosWfc.Common;
     using Microsoft.Teams.App.KronosWfc.Models.ResponseEntities.HyperFind;
@@ -29,6 +30,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
     using Microsoft.Teams.Shifts.Integration.BusinessLogic.Models;
     using Microsoft.Teams.Shifts.Integration.BusinessLogic.Providers;
     using Newtonsoft.Json;
+    using Microsoft.Teams.App.KronosWfc.Models.ResponseEntities.Shifts.UpcomingShifts;
 
     /// <summary>
     /// Time off controller.
@@ -49,6 +51,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
         private readonly ITeamDepartmentMappingProvider teamDepartmentMappingProvider;
         private readonly IHttpClientFactory httpClientFactory;
         private readonly BackgroundTaskWrapper taskWrapper;
+        private readonly IShiftsActivity shiftsActivity;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TimeOffController"/> class.
@@ -65,6 +68,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
         /// <param name="teamDepartmentMappingProvider">Team Department Mapping Provider DI.</param>
         /// <param name="httpClientFactory">HttpClientFactory DI.</param>
         /// <param name="taskWrapper">Wrapper class instance for BackgroundTask.</param>
+        /// <param name="upcomingShiftsActivity">upcoming Shifts Activity.</param>
         public TimeOffController(
             AppSettings appSettings,
             TelemetryClient telemetryClient,
@@ -77,7 +81,8 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
             IGraphUtility graphUtility,
             ITeamDepartmentMappingProvider teamDepartmentMappingProvider,
             IHttpClientFactory httpClientFactory,
-            BackgroundTaskWrapper taskWrapper)
+            BackgroundTaskWrapper taskWrapper,
+            IShiftsActivity upcomingShiftsActivity)
         {
             this.appSettings = appSettings;
             this.telemetryClient = telemetryClient;
@@ -91,6 +96,7 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
             this.teamDepartmentMappingProvider = teamDepartmentMappingProvider;
             this.httpClientFactory = httpClientFactory;
             this.taskWrapper = taskWrapper;
+            this.shiftsActivity = upcomingShiftsActivity;
         }
 
         /// <summary>
@@ -170,13 +176,26 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
                                 continue;
                             }
 
+                            // Get shift response for a batch of users.
+                            //  This is required to have a way to check WFC for any TORs that have been approved and become a 
+                            //  Scheduled TimeOff (SchedulePayCodeEdit).  This gives us a view to what, TOR related still exists 
+                            //  in WFC and any items in Shfits that cannot be linked to a TOR Schedule should be deleted as WFC is 
+                            //  the source of truth.
+                            var shiftsResponse = await this.shiftsActivity.ShowUpcomingShiftsInBatchAsync(
+                                new Uri(allRequiredConfigurations.WfmEndPoint),
+                                allRequiredConfigurations.KronosSession,
+                                queryStartDate,
+                                queryEndDate,
+                                processBatchUsersQueueInBatch.ToList()).ConfigureAwait(false);
+
                             await this.ProcessTimeOffEntitiesBatchAsync(
                                 allRequiredConfigurations,
                                 processKronosUsersQueueInBatch,
                                 lookUpData,
                                 timeOffDetails?.RequestMgmt?.RequestItems?.GlobalTimeOffRequestItem,
                                 timeOffReasons,
-                                monthPartitionKey).ConfigureAwait(false);
+                                monthPartitionKey,
+                                shiftsResponse?.Schedule?.ScheduleItems?.SchedulePayCodeEdit).ConfigureAwait(false);
                         }
                     }
                 }
@@ -440,7 +459,8 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
             List<TimeOffMappingEntity> lookUpData,
             List<GlobalTimeOffRequestItem> timeOffResponseDetails,
             List<PayCodeToTimeOffReasonsMappingEntity> timeOffReasons,
-            string monthPartitionKey)
+            string monthPartitionKey,
+            SchedulePayCodeEdit[] scheduledTimeOffshifts)
         {
             this.telemetryClient.TrackTrace($"ProcessTimeOffEntitiesBatchAsync start at: {DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)}");
 
@@ -559,15 +579,20 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
                 }
             }
 
-            // Clean up any orphaned TORs not found in Kronos.
-            if (lookUpData.Except(timeOffLookUpEntriesFoundList).Any())
-            {
-                await this.DeleteOrphanDataTimeOffEntityMappingsAsync(
-                    configurationDetails,
-                    timeOffLookUpEntriesFoundList,
-                    userModelList,
-                    lookUpData).ConfigureAwait(false);
-            }
+            // Clean up any orphaned TimeOff Schedules not found in Kronos.
+            // TODO:  Create a flag to determine if any of the TimeOff Schedules in Shifts have been deleted in WFC and
+            //  if so, call the DeleteOrphanDataTimeOffEntityMappingAsync method.  Use the scheduledTimeOffshifts to build 
+            //  the flag as the array is the direct collection of existing TimeOff Schedules from WFC.  Will need to match a 
+            //  combination of PayCode, StartDate and User on the scheduledTimeOffshifts object as WFC does not have any ids
+            //  to match.
+            //if ()
+            //{
+            //    await this.DeleteOrphanDataTimeOffEntityMappingsAsync(
+            //        configurationDetails,
+            //        scheduledTimeOffshifts,
+            //        userModelList,
+            //        lookUpData).ConfigureAwait(false);
+            //}
 
             await this.ApproveTimeOffRequestAsync(
                  timeOffLookUpEntriesFoundList,
@@ -890,12 +915,15 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
         private async Task DeleteOrphanDataTimeOffEntityMappingsAsync
         (
             SetupDetails configurationDetails,
-            List<TimeOffMappingEntity> lookUpDataFoundList,
+            SchedulePayCodeEdit[] scheduledTimeOffshifts,
             List<UserDetailsModel> userModelList,
             List<TimeOffMappingEntity> lookUpData)
         {
-            // Identify the orphan TORs
-            var orphanList = lookUpData.Except(lookUpDataFoundList);
+            // Identify the orphan TimeOff Schedules
+            //  TODO: Write logic using the scheduledTimeOffShifts array to identify/store any missing (orphaned)
+            //  TimeOff Schedules in WFC.  That list can then be fed to the logic below to clean-up/purge those orphaned 
+            //  TimeOff Schedules from Teams/Shifts and the Connector Storage Account.
+            //var orphanList = ;
 
             // Get list of TORs for each Team based on User's in the Orphan list.  Required
             // to link the TimeOffMapping Entity to the Shifts TimeOffRequest object.
@@ -1002,7 +1030,8 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
                     var responseContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     var timeOffResponse = JsonConvert.DeserializeObject<TimeOffRequestRes>(responseContent);
 
-                    TORs.AddRange(timeOffResponse.TORItem);
+                    TORs.AddRange(timeOffResponse.TORItem
+                        .Where(tor => tor.StartDateTime >= DateTime.Now));
                 }
 
                 httpClient.Dispose();
@@ -1055,7 +1084,8 @@ namespace Microsoft.Teams.Shifts.Integration.API.Controllers
 
                     var timeOffResponse = JsonConvert.DeserializeObject<TimeOffScheduleRes>(responseContent, settings);
 
-                    TOSs.AddRange(timeOffResponse.TOSItem);
+                    TOSs.AddRange(timeOffResponse.TOSItem
+                        .Where(tos => tos?.SharedTimeOff?.StartDateTime >= DateTime.Now));
                 }
 
                 httpClient.Dispose();

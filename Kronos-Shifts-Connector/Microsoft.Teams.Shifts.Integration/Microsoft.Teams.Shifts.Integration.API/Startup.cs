@@ -305,7 +305,8 @@ namespace Microsoft.Teams.Shifts.Integration.API
                 provider.GetRequiredService<IGraphUtility>(),
                 provider.GetRequiredService<ITeamDepartmentMappingProvider>(),
                 provider.GetRequiredService<IHttpClientFactory>(),
-                provider.GetRequiredService<BackgroundTaskWrapper>()));
+                provider.GetRequiredService<BackgroundTaskWrapper>(),
+                provider.GetRequiredService<IShiftsActivity>()));
 
             services.AddSingleton((provider) => new UserController(
                 provider.GetRequiredService<AppSettings>(),
